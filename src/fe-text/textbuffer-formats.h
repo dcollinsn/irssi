@@ -11,6 +11,7 @@ typedef struct _TEXT_BUFFER_FORMAT_REC {
 	char *nick;
 	char **args;
 	int nargs;
+	GSList *expando_cache;
 	int flags;
 } TEXT_BUFFER_FORMAT_REC;
 
@@ -18,6 +19,5 @@ void textbuffer_format_rec_free(TEXT_BUFFER_FORMAT_REC *rec);
 char *textbuffer_line_get_text(TEXT_BUFFER_REC *buffer, LINE_REC *line);
 void textbuffer_formats_init(void);
 void textbuffer_formats_deinit(void);
-void i_refstr_table_size_dbg(void);
 
 #endif

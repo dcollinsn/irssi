@@ -25,6 +25,7 @@
 #include <irssi/src/core/servers.h>
 #include <irssi/src/core/settings.h>
 #include <irssi/src/core/signals.h>
+#include <irssi/src/core/refstrings.h>
 #include <irssi/src/fe-text/module-formats.h>
 #include <irssi/src/fe-text/textbuffer-formats.h>
 
@@ -374,7 +375,13 @@ static void cmd_scrollback_status(void)
 	printtext(NULL, NULL, MSGLEVEL_CLIENTCRAP,
 		  "Total: %d lines, %dkB of data",
 		  total_lines, (int)(total_mem / 1024));
-	i_refstr_table_size_dbg();
+	{
+		char *tmp = i_refstr_table_size_dbg();
+		if (tmp != NULL)
+			printtext(NULL, NULL, MSGLEVEL_CLIENTCRAP,
+				  "%s", tmp);
+		g_free(tmp);
+	}
 }
 
 /* SYNTAX: SCROLLBACK REDRAW */

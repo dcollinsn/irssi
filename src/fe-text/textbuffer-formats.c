@@ -1,8 +1,10 @@
 #include "module.h"
 #include <irssi/src/core/expandos.h>
 #include <irssi/src/core/levels.h>
+#include <irssi/src/core/refstrings.h>
 #include <irssi/src/core/servers.h>
 #include <irssi/src/core/signals.h>
+#include <irssi/src/core/special-vars.h>
 #include <irssi/src/fe-common/core/printtext.h>
 #include <irssi/src/fe-common/core/themes.h>
 #include <irssi/src/fe-text/gui-printtext.h>
@@ -12,101 +14,19 @@
 
 TEXT_BUFFER_FORMAT_REC *format_rec;
 LINE_INFO_REC lineinfo_tmp;
+GSList *expando_cache;
 
-#if GLIB_CHECK_VERSION(3, 58, 0)
-
-#define i_refstr_init() /* nothing */
-#define i_refstr_release(str) ((str) == NULL ? NULL : g_ref_string_release(str))
-#define i_refstr_intern(str) ((str) == NULL ? NULL : g_ref_string_new_intern(str))
-#define i_refstr_deinit() /* nothing */
-
-#else
-
-GHashTable *i_refstr_table;
-
-static void i_refstr_init(void)
+static void collector_free(GSList **collector)
 {
-	i_refstr_table = g_hash_table_new(g_str_hash, g_str_equal);
-}
-
-static char *i_refstr_intern(const char *str)
-{
-	char *ret;
-	gpointer rc_p, ret_p;
-	size_t rc;
-
-	if (str == NULL)
-		return NULL;
-
-	if (g_hash_table_lookup_extended(i_refstr_table, str, &ret_p, &rc_p)) {
-		rc = GPOINTER_TO_SIZE(rc_p);
-		ret = ret_p;
-	} else {
-		rc = 0;
-		ret = g_strdup(str);
-	}
-
-	if (rc + 1 <= G_MAXSIZE) {
-		g_hash_table_insert(i_refstr_table, ret, GSIZE_TO_POINTER(rc + 1));
-		return ret;
-	} else {
-		return g_strdup(str);
+	for (; *collector; ) {
+		GSList *next = (*collector)->next->next;
+		i_refstr_release((*collector)->data);
+		g_free((*collector)->next->data);
+		g_slist_free_1((*collector)->next);
+		g_slist_free_1((*collector));
+		*collector = next;
 	}
 }
-
-static void i_refstr_release(char *str)
-{
-	char *ret;
-	gpointer rc_p, ret_p;
-	size_t rc;
-
-	if (str == NULL)
-		return;
-
-	if (g_hash_table_lookup_extended(i_refstr_table, str, &ret_p, &rc_p)) {
-		rc = GPOINTER_TO_SIZE(rc_p);
-		ret = ret_p;
-	} else {
-		rc = 0;
-		ret = NULL;
-	}
-
-	if (ret == str) {
-		if (rc > 1) {
-			g_hash_table_insert(i_refstr_table, ret, GSIZE_TO_POINTER(rc - 1));
-		} else {
-			g_hash_table_remove(i_refstr_table, ret);
-			g_free(ret);
-		}
-	} else {
-		g_free(str);
-	}
-}
-
-static void i_refstr_deinit(void)
-{
-	g_hash_table_foreach(i_refstr_table, (GHFunc) g_free, NULL);
-	g_hash_table_destroy(i_refstr_table);
-}
-
-void i_refstr_table_size_dbg(void)
-{
-	GHashTableIter iter;
-	void *k_p, *v_p;
-	size_t count, mem;
-	count = 0;
-	mem = 0;
-	g_hash_table_iter_init(&iter, i_refstr_table);
-	while (g_hash_table_iter_next(&iter, &k_p, &v_p)) {
-		char *key = k_p;
-		count++;
-		mem += sizeof(char) * (strlen(key) + 1) + 2 * sizeof(void *);
-	}
-
-	printtext(NULL, NULL, MSGLEVEL_CLIENTCRAP, "Shared strings: %d, %dkB of data", count,
-	          (int) (mem / 1024));
-}
-#endif
 
 void textbuffer_format_rec_free(TEXT_BUFFER_FORMAT_REC *rec)
 {
@@ -130,6 +50,7 @@ void textbuffer_format_rec_free(TEXT_BUFFER_FORMAT_REC *rec)
 	}
 	rec->nargs = 0;
 	g_free(rec->args);
+	collector_free(&rec->expando_cache);
 	g_slice_free(TEXT_BUFFER_FORMAT_REC, rec);
 }
 
@@ -171,6 +92,7 @@ static void sig_print_format(THEME_REC *theme, const char *module, TEXT_DEST_REC
 	int formatnum;
 	FORMAT_REC *formats;
 
+	special_set_collector(&expando_cache);
 	store_lineinfo_tmp(dest);
 
 	formatnum = GPOINTER_TO_INT(formatnump);
@@ -184,8 +106,29 @@ static void sig_print_format(THEME_REC *theme, const char *module, TEXT_DEST_REC
 	dest->flags |= PRINT_FLAG_FORMAT;
 }
 
+static GSList *reverse_collector(GSList *a1)
+{
+	GSList *b1, *c1;
+	c1 = NULL;
+	while (a1) {
+		b1 = a1->next->next;
+		a1->next->next = c1;
+
+		c1 = a1;
+		a1 = b1;
+	}
+	return c1;
+}
+
+static void clear_collector(void)
+{
+	collector_free(&expando_cache);
+	special_set_collector(NULL);
+}
+
 static void sig_print_noformat(TEXT_DEST_REC *dest, const char *text)
 {
+	clear_collector();
 	store_lineinfo_tmp(dest);
 
 	textbuffer_format_rec_free(format_rec);
@@ -196,6 +139,20 @@ static void sig_print_noformat(TEXT_DEST_REC *dest, const char *text)
 	dest->flags |= PRINT_FLAG_FORMAT;
 }
 
+/*
+static void dump_collector(GSList *collector)
+{
+	GSList *tmp;
+	fprintf(stderr, "EXPANDO Cache: ");
+	for (tmp = collector; tmp; ) {
+		GSList *next = tmp->next->next;
+		fprintf(stderr, "%s => %s ; ", (char *)tmp->data, (char *)tmp->next->data);
+		tmp = next;
+	}
+	fprintf(stderr, "\n");
+}
+*/
+
 static void sig_gui_print_text_finished(WINDOW_REC *window)
 {
 	GUI_WINDOW_REC *gui;
@@ -205,8 +162,13 @@ static void sig_gui_print_text_finished(WINDOW_REC *window)
 
 	static const unsigned char eol[] = { 0, LINE_CMD_EOL };
 
+	special_set_collector(NULL);
 	if (format_rec == NULL)
 		return;
+	expando_cache = reverse_collector(expando_cache);
+	/* dump_collector(expando_cache); */
+	format_rec->expando_cache = expando_cache;
+	expando_cache = NULL;
 
 	gui = WINDOW_GUI(window);
 	view = gui->view;
@@ -258,8 +220,10 @@ char *textbuffer_line_get_text(TEXT_BUFFER_REC *buffer, LINE_REC *line)
 			char *arglist[MAX_FORMAT_PARAMS] = { 0 };
 			formatnum = format_find_tag(format_rec->module, format_rec->format);
 			memcpy(arglist, format_rec->args, format_rec->nargs * sizeof(char *));
+			special_fill_cache(format_rec->expando_cache);
 			text = format_get_text_theme_charargs(theme, format_rec->module, &dest,
 			                                      formatnum, arglist);
+			special_fill_cache(NULL);
 		} else {
 			text = g_strdup(format_rec->args[1]);
 		}
@@ -300,7 +264,6 @@ char *textbuffer_line_get_text(TEXT_BUFFER_REC *buffer, LINE_REC *line)
 void textbuffer_formats_init(void)
 {
 	format_rec = NULL;
-	i_refstr_init();
 
 	signal_add("print format", (SIGNAL_FUNC) sig_print_format);
 	signal_add("print noformat", (SIGNAL_FUNC) sig_print_noformat);
@@ -313,6 +276,6 @@ void textbuffer_formats_deinit(void)
 	signal_remove("print noformat", (SIGNAL_FUNC) sig_print_noformat);
 	signal_remove("gui print text finished", (SIGNAL_FUNC) sig_gui_print_text_finished);
 
+	special_set_collector(NULL);
 	textbuffer_format_rec_free(format_rec);
-	i_refstr_deinit();
 }
