@@ -73,7 +73,7 @@ env = find_program('env')
 irssi_version_sh = find_program('utils/irssi-version.sh')
 irssi_version_h = custom_target('irssi-version.h',
   build_by_default : true,
-  # build_always_stale : true,
+  build_always_stale : true,
   capture : true,
   command : [env, 'VERSION=' + meson.project_version(),
     irssi_version_sh, meson.current_source_dir()],
