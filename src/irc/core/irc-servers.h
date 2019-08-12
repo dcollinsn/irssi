@@ -17,8 +17,10 @@
 #define CAP_LS_VERSION "302"
 #define CAP_MESSAGE_TAGS "message-tags"
 #define CAP_SASL "sasl"
+#define CAP_BNC "oragono.io/bnc"
 #define CAP_MULTI_PREFIX "multi-prefix"
 #define CAP_MAXLINE "oragono.io/maxline-2"
+#define CAP_SETNAME "draft/setname"
 
 /* returns IRC_SERVER_REC if it's IRC server, NULL if it isn't */
 #define IRC_SERVER(server) \
