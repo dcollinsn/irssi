@@ -16,6 +16,9 @@
 
 #define CAP_LS_VERSION "302"
 #define CAP_MESSAGE_TAGS "message-tags"
+#define CAP_SASL "sasl"
+#define CAP_MULTI_PREFIX "multi-prefix"
+#define CAP_MAXLINE "oragono.io/maxline-2"
 
 /* returns IRC_SERVER_REC if it's IRC server, NULL if it isn't */
 #define IRC_SERVER(server) \
@@ -53,6 +56,8 @@ struct _IRC_SERVER_CONNECT_REC {
 #define STRUCT_SERVER_CONNECT_REC IRC_SERVER_CONNECT_REC
 struct _IRC_SERVER_REC {
 #include <irssi/src/core/server-rec.h>
+
+	int max_message_len; /* Maximum message length, default = 510 = 512 - 2 (for CR+LF) */
 
 	/* For deciding if event should be redirected */
 	GSList *redirects;
