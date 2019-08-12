@@ -14,6 +14,9 @@
 #define MAX_IRC_TAGS_LEN (8191 - 2) /* (2 bytes for `@' and SPACE) */
 #define MAX_IRC_USER_TAGS_LEN 4094
 
+#define CAP_LS_VERSION "302"
+#define CAP_MESSAGE_TAGS "message-tags"
+
 /* returns IRC_SERVER_REC if it's IRC server, NULL if it isn't */
 #define IRC_SERVER(server) \
 	PROTO_CHECK_CAST(SERVER(server), IRC_SERVER_REC, chat_type, "IRC")
