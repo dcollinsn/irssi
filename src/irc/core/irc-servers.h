@@ -21,6 +21,7 @@
 #define CAP_MULTI_PREFIX "multi-prefix"
 #define CAP_MAXLINE "oragono.io/maxline-2"
 #define CAP_SETNAME "draft/setname"
+#define CAP_INVITE_NOTIFY "invite-notify"
 
 /* returns IRC_SERVER_REC if it's IRC server, NULL if it isn't */
 #define IRC_SERVER(server) \
